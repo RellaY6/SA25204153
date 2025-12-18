@@ -1,0 +1,24 @@
+Package: SA25204153
+Type: Package
+Title: Adaptive Model Averaging and Gibbs Sampler Examples for Statistical Computing
+Version: 1.0.0
+Date: 2025-12-08
+Authors@R:
+    person(given = "Yujia",
+           family = "Yang",
+           email = "yj.yang@mail.ustc.edu.cn",
+           role = c("aut", "cre"))
+Maintainer: Yujia Yang <yj.yang@mail.ustc.edu.cn>
+Description: Collection of example R and Rcpp functions used in the
+    'Statistical Computing' course. It implements
+    adaptive model averaging (AMA) from Zhang (2022) for a high-dimensional
+    linear model simulation study, and includes a Gibbs sampler implemented in Rcpp.
+License: GPL (>= 2)
+Encoding: UTF-8
+Imports: Rcpp (>= 1.1.0), MASS, lars, quadprog
+Suggests:
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+LinkingTo: Rcpp
+RoxygenNote: 7.3.3

@@ -1,0 +1,273 @@
+---
+title: "Adaptive Model Averaging (AMA) Example 1 数值实验说明"
+author: "SA25204153 杨羽佳"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{AMA Example 1 数值实验说明}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+# ---- Robust package loading for knitting ----
+# This Rmd can be knitted in two ways:
+# (A) As a normal Rmd outside the package: install the package first; OR
+# (B) Inside the package source tree (recommended): we auto-detect the package root
+#     and use devtools::load_all() so you do NOT need to install first.
+
+.pkg_root <- function(max_up = 5L) {
+  wd <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+  p <- wd
+  for (k in 0:max_up) {
+    if (file.exists(file.path(p, "DESCRIPTION"))) return(p)
+    parent <- normalizePath(file.path(p, ".."), winslash = "/", mustWork = TRUE)
+    if (identical(parent, p)) break
+    p <- parent
+  }
+  return(NA_character_)
+}
+
+pkg <- "SA25204153"
+
+if (requireNamespace(pkg, quietly = TRUE)) {
+  suppressPackageStartupMessages(library(SA25204153))
+} else {
+  # Not installed -> try load_all() from package source
+  root <- .pkg_root()
+  if (is.na(root)) {
+    stop("Package 'SA25204153' is not installed, and I cannot find a package root (DESCRIPTION). ",
+         "Fix: (1) open the SA25204153 R project, setwd() to the package root, then Knit; ",
+         "or (2) install the package with devtools::install() and knit again.")
+  }
+  if (!requireNamespace("devtools", quietly = TRUE)) {
+    install.packages("devtools", quiet = TRUE)
+  }
+  suppressPackageStartupMessages(devtools::load_all(root))
+}
+
+# Ensure suggested packages for this vignette
+need <- c("MASS","lars","quadprog","ggplot2","microbenchmark","knitr")
+for (p in need) if (!requireNamespace(p, quietly = TRUE)) install.packages(p, quiet = TRUE)
+
+suppressPackageStartupMessages({
+  library(MASS); library(lars); library(quadprog); library(ggplot2); library(microbenchmark); library(knitr)
+})
+```
+
+# 1. 背景：AMA Example 1 在做什么
+
+本小结基于 Zhang (2022) 提出的 **Adaptive Model Averaging (AMA)** 方法，复现文中的 Numerical Example 1。  
+
+- 数据生成：高维线性模型  
+  \[
+    y = X \beta_0 + \varepsilon,\quad
+    X \sim \mathcal{N}(0, \Sigma),\quad
+    \varepsilon \sim \mathcal{N}(0, \sigma^2 I_n),
+  \]
+  其中协方差矩阵 \(\Sigma\) 具有 AR(1) 结构，真系数 \(\beta_0\) 只有前 \(3q\) 个分量非零。
+
+- 目标：比较三种估计方法的模型误差与稀疏性表现：
+  1. AMA（自适应模型平均）；
+  2. ALASSO + mBIC 单模型选择；
+  3. ALASSO + eBIC 单模型选择。
+
+本 R 包实现了 Example 1 中的主要步骤，并提供了 4 个核心函数：
+
+- `ama_fit_example1()`：在给定数据上一条龙跑完 AMA Step 1–6；
+- `sim_example1_grid()`：在一组 \((n, \rho, R^2)\) 组合下做 Monte Carlo 模拟比较；
+- `compute_ME_cpp()`：在 C++ 中计算模型误差 \(ME(\hat\beta)\)；
+- `compute_C_IC_cpp()`：在 C++ 中计算稀疏性指标 C / IC。
+
+下面依次说明这些函数的用途和基本用法。
+
+# 2. 数据生成函数 `gen_example1_data()`
+
+该函数是内部辅助函数。它根据给定的 \((n, \rho, R^2)\) 生成一组模拟数据。
+
+```{r example-gen, echo=TRUE}
+dat <- gen_example1_data(n = 200, rho = 0.5, R2 = 0.4)
+str(dat, max.level = 1)
+```
+
+输出列表中包含：
+
+- `X`：\(n \times p\) 设计矩阵；
+- `y`：长度为 \(n\) 的响应向量；
+- `beta0`：真系数向量；
+- `Sigma`：协方差矩阵；
+- 以及若干用于描述维度设置的参数。
+
+# 3. AMA 拟合函数 `ama_fit_example1()`
+
+## 3.1 函数作用
+
+`ama_fit_example1()` 对给定的 \((X, y)\) 完成 AMA 的完整流程：
+
+1. Step 1：通过 LARS 实现 Adaptive LASSO，得到一条解路径；
+2. Step 2：用 mBIC 从路径中选出候选变量集合 \(H\)；
+3. Step 3–4：围绕 \(H\) 构造一族候选模型，并对每个模型做 OLS 拟合；
+4. Step 5–6：在一组 \(\phi_n\) 网格上用 Cp-type 准则选择最优 \(\hat\phi_n\)，得到最终 AMA 模型平均估计 \(\hat\beta(\hat\phi_n)\)。
+
+## 3.2 基本调用示例
+
+```{r example-ama-fit, echo=TRUE}
+# 生成一组 Example 1 数据
+dat <- gen_example1_data(n = 200, rho = 0.5, R2 = 0.4)
+
+# 跑一次 AMA 拟合（为了 vignette 速度，这里减小 MC 次数）
+fit_ama <- ama_fit_example1(
+  X          = dat$X,
+  y          = dat$y,
+  n_phi_grid = 5,
+  B_mc       = 10,
+  seed       = 2025
+)
+
+names(fit_ama)
+```
+
+返回结果中：
+
+- `beta_ma`：最终 AMA 模型平均估计 \(\hat\beta(\hat\phi_n)\)；
+- `phi_hat`：选出的 \(\hat\phi_n\)；
+- `w_hat`：候选模型的模型平均权重；
+- `sigma2_hat`：基于集合 \(H\) 的噪声方差估计；
+- `H`：mBIC 选出的候选变量集合；
+- `candidate_sets`：Step 2+3 构造的所有候选模型；
+- `step1`, `step2`, `step34`, `step56`：对应各步骤的完整中间结果。
+
+我们可以简单查看非零系数个数：
+
+```{r example-ama-nonzero, echo=TRUE}
+sum(abs(fit_ama$beta_ma) > 1e-6)
+```
+
+# 4. 模拟主函数 `sim_example1_grid()`
+
+## 4.1 函数作用概述
+
+`sim_example1_grid()` 在一组 \((n, \rho, R^2)\) 组合上重复模拟（默认 `B_rep = 100` 次），比较三种方法的表现：
+
+- 输出指标：
+  - MRME：模型误差相对 LS 的中位数；
+  - C：真正为零且估计为 0 的系数个数（越大越好）；
+  - IC：真正非零却估计为 0 的系数个数（越小越好）。
+
+## 4.2 精简版示例（vignette 中用较小规模）
+
+为了控制 knit 时间，这里用一个非常小的设定作为演示：
+
+```{r example-sim-grid, echo=TRUE}
+res_demo <- sim_example1_grid(
+  n_vec      = 200,
+  rho_vec    = 0.5,
+  R2_vec     = c(0.2, 0.4),
+  B_rep      = 10,   # 演示时减小重复次数
+  n_phi_grid = 5,
+  B_mc       = 10,
+  seed       = 2025
+)
+
+res_demo
+```
+
+
+### 结果可视化（MRME）
+
+```{r plot-mrme, fig.width=10, fig.height=4.8, out.width="100%", fig.align="center"}
+ggplot(res_demo, aes(x = factor(R2), y = MRME, fill = method)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ rho, labeller = label_bquote(rho == .(rho))) +
+  labs(
+    x = expression(R^2),
+    y = "MRME（相对 LS 的中位数）",
+    title = "不同设定下 MRME 对比"
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+# 5. C++ 函数 `compute_ME_cpp()` 与 `compute_C_IC_cpp()`
+
+在 Example 1 的模拟中，我们反复需要计算：
+
+- 模型误差  
+  \[
+    ME(\hat\beta) = (\hat\beta - \beta_0)^\top \Sigma (\hat\beta - \beta_0),
+  \]
+- 稀疏性指标 C / IC：
+  - C：真零系数中被估计为 0 的个数；
+  - IC：真正非零却被估计为 0 的个数。
+
+为了提高效率，这两个计算被实现为 Rcpp 函数：
+
+- `compute_ME_cpp(beta_hat, beta0, Sigma)`
+- `compute_C_IC_cpp(beta_hat, beta0, tol = 1e-6)`
+
+下面给出可直接复现的最小示例，并在 vignette 内部提供一个“纯 R”版本用于速度对比（该 R 版本仅用于对照，不导出、不作为包函数）。
+
+## 5.1 `compute_ME_cpp()` 示例
+
+```{r rcpp-me-example, echo=TRUE}
+beta0 <- dat$beta0
+Sigma <- dat$Sigma
+
+ME_ama <- compute_ME_cpp(fit_ama$beta_ma, beta0, Sigma)
+ME_ama
+```
+
+## 5.2 `compute_C_IC_cpp()` 示例
+
+```{r rcpp-cic-example, echo=TRUE}
+CIC_ama <- compute_C_IC_cpp(fit_ama$beta_ma, beta0)
+CIC_ama
+```
+
+## 5.3 速度对比：R vs Rcpp（microbenchmark）
+
+为了做速度对比，这里在 vignette 内写一个“纯 R”的对照版本。
+
+```{r rcpp-speed-compare, echo=TRUE}
+compute_ME_R <- function(beta_hat, beta0, Sigma) {
+  diff <- beta_hat - beta0
+  as.numeric(t(diff) %*% Sigma %*% diff)
+}
+
+compute_C_IC_R <- function(beta_hat, beta0, tol = 1e-6) {
+  is_zero_true <- abs(beta0) < tol
+  is_zero_hat  <- abs(beta_hat) < tol
+  c(C = sum(is_zero_true & is_zero_hat),
+    IC = sum(!is_zero_true & is_zero_hat))
+}
+
+# 构造一组随机输入，避免基准测试被“特例”影响
+set.seed(123)
+p <- length(beta0)
+beta_hat_test <- beta0 + rnorm(p, 0, 0.2)
+
+mb <- microbenchmark(
+  ME_R     = compute_ME_R(beta_hat_test, beta0, Sigma),
+  ME_cpp   = compute_ME_cpp(beta_hat_test, beta0, Sigma),
+  C_IC_R   = compute_C_IC_R(beta_hat_test, beta0),
+  C_IC_cpp = compute_C_IC_cpp(beta_hat_test, beta0),
+  times = 200L
+)
+mb
+```
+
+```{r rcpp-speed-summary, echo=FALSE}
+mb_sum <- summary(mb)[, c("expr", "median", "mean", "min", "max")]
+knitr::kable(mb_sum, digits = 0, caption = "R vs Rcpp：microbenchmark 结果摘要（单位：microseconds）")
+```
+
+
+# 6. 小结
+
+本 vignette 简要说明了课程大作业中实现的 AMA Example 1 数值实验代码，包括：
+
+- `ama_fit_example1()`：在单个数据集上完成 AMA Step 1–6 的拟合，并返回 AMA 估计与各步骤中间结果；
+- `sim_example1_grid()`：在一组 \((n, \rho, R^2)\) 设定下进行 Monte Carlo 模拟，对比 AMA 与基于 ALASSO 的两种单模型选择方法；
+- `compute_ME_cpp()` 与 `compute_C_IC_cpp()`：在 C++ 中高效计算模型误差和稀疏性指标，用于支持大规模模拟。
