@@ -1,40 +1,41 @@
 #' @importFrom MASS mvrnorm
 #' @importFrom lars lars
 #' @importFrom quadprog solve.QP
+#' @importFrom stats lm coef residuals rnorm median
 NULL
 ## ==========================================================
-## Adaptive Model Averaging(AMA) Numerical Example 1: 内部辅助函数
+## Adaptive Model Averaging (AMA) Numerical Example 1: internal helper functions
 ## ==========================================================
 
 ama_step1_alasso_lars <- function(X, y, gamma_alasso = 1, tol_active = 1e-8) {
-  # X: n x p 设计矩阵
-  # y: n 维响应向量
-  # gamma_alasso: ALASSO 权重中的指数，默认 gamma_alasso = 1
-  # tol_active: 判断“非零系数”的阈值
+  # X: n x p design matrix
+  # y: length-n response vector
+  # gamma_alasso: exponent in ALASSO weights (default gamma_alasso = 1)
+  # tol_active: threshold to decide 'nonzero' coefficients
   
   stopifnot(is.matrix(X), length(y) == nrow(X))
   n <- nrow(X); p <- ncol(X)
   
   if (p >= n) {
-    warning("当前 p >= n，不是 AMA 设定的 p < n 场景，OLS 初始估计可能不可用或不稳定。")
+    warning("Current p >= n. This violates the Example 1 setting (p < n). OLS init may be unstable.")
   }
   
-  ## 0. 预处理：标准化 X，中心化 y
+  ## 0. Preprocessing: scale X and center y
   X_scaled   <- scale(X)
   y_centered <- as.numeric(scale(y, center = TRUE, scale = FALSE))
   
-  ## 1. 初始估计 beta^(init)：OLS
+  ## 1. Initial estimator beta^(init): OLS
   lm_init   <- lm(y_centered ~ X_scaled)
-  beta_init <- coef(lm_init)[-1]  # 去掉截距
+  beta_init <- coef(lm_init)[-1]  # drop intercept
   
-  ## 2. 构造 ALASSO 权重
+  ## 2. Build ALASSO weights
   eps     <- 1e-6
   weights <- 1 / (abs(beta_init) + eps)^gamma_alasso
   
-  ## 3. 重新缩放设计矩阵: X*_j = X_scaled_j / w_j
+  ## 3. Rescale design: X*_j = X_scaled_j / w_j
   X_star <- sweep(X_scaled, 2, weights, FUN = "/")
   
-  ## 4. 在 (X*, y_centered) 上跑 LARS-LASSO 路径
+  ## 4. Run LARS-LASSO path on (X*, y_centered)
   if (!requireNamespace("lars", quietly = TRUE)) {
     stop("Package 'lars' is required. Please install it first.")
   }
@@ -50,7 +51,7 @@ ama_step1_alasso_lars <- function(X, y, gamma_alasso = 1, tol_active = 1e-8) {
   beta_lars_path   <- lars_fit$beta  # K x p
   beta_alasso_path <- sweep(beta_lars_path, 2, weights, FUN = "/")
   
-  ## 5. 提取每一步 active set
+  ## 5. Extract the active set at each step
   K <- nrow(beta_alasso_path)
   active_sets <- vector("list", K)
   for (k in seq_len(K)) {
@@ -83,7 +84,7 @@ ama_step2_select_H_mBIC <- function(X, y, step1_res,
   
   active_sets <- step1_res$active_sets
   
-  ## 去重
+  ## De-duplicate
   keys <- sapply(active_sets, function(idx) paste(sort(idx), collapse = ","))
   keep <- !duplicated(keys)
   active_sets_uniq <- active_sets[keep]
@@ -114,15 +115,18 @@ ama_step2_select_H_mBIC <- function(X, y, step1_res,
   best_k <- which.min(mBIC_values)
   H      <- active_sets_uniq[[best_k]]
   
-  ## 如果整体最优是空模型，再在非空模型里选一次
+  ## If the overall best is the null model, pick the best non-null model instead
   if (length(H) == 0) {
     nonempty <- which(df_vec > 0)
     if (length(nonempty) == 0) {
-      stop("LARS 路径中没有非空 active set。")
+      # stop("No non-null active set on the LARS path.")
+      stop("No non-empty active set found along the LARS path.")
+      
     }
     best_k <- nonempty[which.min(mBIC_values[nonempty])]
     H      <- active_sets_uniq[[best_k]]
-    message("mBIC 最优为空模型，改用最佳非空模型 k = ", best_k)
+    message(paste0("mBIC selects the null model; using the best non-null model k = ", best_k))
+    # message("mBIC selects the null model; switch to the best non-null model, k = ", best_k)
   }
   
   list(
@@ -146,10 +150,11 @@ ama_step34_build_candidates <- function(X, y,
   H <- sort(unique(step2_res$H))
   q_star <- length(H)
   if (q_star == 0) {
-    stop("mBIC 选出的 H 为空，无法继续。")
+    stop("mBIC selected an empty set H; cannot proceed.")
+    # stop("mBIC selects an empty H; cannot continue.")
   }
   
-  ## A. 每个变量的“进入时间”
+  ## A. Variable 'entry time'
   entry_step <- rep(Inf, p)
   for (k in seq_len(K)) {
     idx <- active_sets[[k]]
@@ -165,13 +170,13 @@ ama_step34_build_candidates <- function(X, y,
   ord_H     <- order(steps_H)
   H_ordered <- H[ord_H]   # He1,...,He_{q*}
   
-  ## B. Step 2 的 q* 个嵌套模型
+  ## B. The q* nested models from Step 2
   nested_sets <- vector("list", q_star)
   for (j in seq_len(q_star)) {
     nested_sets[[j]] <- sort(H_ordered[1:j])
   }
   
-  ## C. Step 3: “包含 H 的更大模型”
+  ## C. Step 3: 'larger models that contain H'
   k_all <- max(steps_H)
   extra_sets <- list()
   if (is.finite(k_all)) {
@@ -183,14 +188,14 @@ ama_step34_build_candidates <- function(X, y,
     }
   }
   
-  ## D. 合并去重
+  ## D. Merge and de-duplicate
   all_sets <- c(nested_sets, extra_sets)
   keys     <- sapply(all_sets, function(idx) paste(idx, collapse = ","))
   keep     <- !duplicated(keys)
   candidate_sets <- all_sets[keep]
   q_n           <- length(candidate_sets)
   
-  ## E. 对每个候选模型做一次 OLS
+  ## E. OLS fit for each candidate model
   beta_hat_mat <- matrix(0, nrow = q_n, ncol = p)
   X_list       <- vector("list", q_n)
   df_vec       <- integer(q_n)
@@ -238,7 +243,7 @@ ama_weights_mu_for_y <- function(X, y,
   candidate_sets <- step34_res$candidate_sets
   df_vec         <- step34_res$df
   
-  ## 1. 构造 M(y): n x q_n
+  ## 1. Build M(y): n x q_n
   M <- matrix(0, nrow = n, ncol = qn)
   for (s in seq_len(qn)) {
     S <- candidate_sets[[s]]
@@ -253,7 +258,7 @@ ama_weights_mu_for_y <- function(X, y,
     }
   }
   
-  ## 2. S_n(w) 的二次型部分
+  ## 2. Quadratic part of S_n(w)
   A <- crossprod(M)
   b <- crossprod(M, y)
   v <- df_vec
@@ -270,7 +275,7 @@ ama_weights_mu_for_y <- function(X, y,
   
   dvec <- as.numeric(2 * b - phi_n * sigma2_hat * v)
   
-  ## 3. 约束: sum w = 1, w >= 0
+  ## 3. Constraints: sum(w)=1 and w>=0
   Amat <- cbind(rep(1, qn), diag(qn))
   bvec <- c(1, rep(0, qn))
   meq  <- 1
@@ -299,23 +304,24 @@ ama_step5_6_section3 <- function(X, y,
   n <- nrow(X)
   p <- ncol(X)
   
-  ## 1. 用 H 模型估计 sigma^2
+  ## 1. Estimate sigma^2 using the H model
   H <- step2_res$H
-  if (length(H) == 0) stop("mBIC 选出的 H 为空，无法估计 sigma^2。")
+  if (length(H) == 0) stop("mBIC selected an empty set H; cannot estimate sigma^2.")
+  # stop("mBIC selects an empty H; cannot estimate sigma^2.")
   X_H   <- X[, H, drop = FALSE]
   fit_H <- lm(y ~ X_H - 1)
   resid_H <- residuals(fit_H)
   df_H    <- length(H)
   sigma2_hat <- sum(resid_H^2) / (n - df_H)
   
-  ## 2. φ_n 搜索区间
+  ## 2. Search interval for phi_n
   low  <- log(log(p))
   high <- log(log(p)) * log(n)
   if (!is.finite(low) || low <= 0) low <- 1
   if (high <= low) high <- low + 1
   phi_grid <- seq(from = low, to = high, length.out = n_phi_grid)
   
-  ## 3. MC 设置
+  ## 3. Monte Carlo settings
   tau <- 0.5 * sqrt(sigma2_hat)
   if (!is.null(seed)) set.seed(seed)
   
@@ -384,30 +390,30 @@ ama_step5_6_section3 <- function(X, y,
 }
 
 gen_example1_data <- function(n, rho = 0.5, R2 = 0.4) {
-  ## 1. 维度：p_n = [4 n^{1/2}] - 5
+  ## 1. Dimension: p_n = [4 n^{1/2}] - 5
   p <- 4 * floor(sqrt(n)) - 5
   
-  ## 2. q = [p_n / 9], 非零个数 |A| = 3q
+  ## 2. q = [p_n / 9], number of nonzeros |A| = 3q
   q  <- floor(p / 9)
   nonzero <- 3 * q
   stopifnot(nonzero <= p)
   
-  ## 3. 协方差矩阵
+  ## 3. Covariance matrix
   idx   <- 1:p
   Sigma <- rho^abs(outer(idx, idx, "-"))
   
-  ## 4. 真系数
+  ## 4. True coefficients
   beta0 <- c(rep(3, nonzero), rep(0, p - nonzero))
   
-  ## 5. 生成 X ~ N(0, Sigma)
+  ## 5. Generate X ~ N(0, Sigma)
   X <- MASS::mvrnorm(n = n, mu = rep(0, p), Sigma = Sigma)
   
-  ## 6. 根据 R2 决定噪声方差
+  ## 6. Choose noise variance based on R2
   var_signal <- as.numeric(t(beta0) %*% Sigma %*% beta0)
   sigma2     <- var_signal * (1 - R2) / R2
   eps        <- rnorm(n, mean = 0, sd = sqrt(sigma2))
   
-  ## 7. 生成 y
+  ## 7. Generate y
   y <- as.numeric(X %*% beta0 + eps)
   
   list(
@@ -590,59 +596,36 @@ sim_example1_one_setting <- function(
 }
 
 ## ==========================================================
-## 下面两个是“用户级函数”，加 roxygen comments 并 @export
+## The following two are user-facing functions with roxygen comments and @export
 ## ==========================================================
 
-#' @title Adaptive Model Averaging 拟合函数（Example 1 设计）
+#' @title Adaptive Model Averaging (AMA) fit function (Numerical Example 1)
 #'
 #' @description
-#' 在 AMA 论文
-#' Zhang (2022), "Adaptive Model Averaging Estimation with a Diverging Number of Parameters"
-#' 的 Example 1 设定下, 完成自适应模型平均 (AMA) 的整个拟合流程。
-#' 给定设计矩阵 \code{X} 和响应向量 \code{y}，
-#' 按照自适应模型平均 (Adaptive Model Averaging, AMA)
-#' (ALASSO 初始模型选择、mBIC 选取集合 \eqn{H}, 构造候选模型集合,
-#' 以及 Cp-type 准则选择正则化参数 \eqn{\phi_n}, 最终给出 AMA 模型平均估计。)
-#' 文献 Example 1 的设定，完成：
-#' \enumerate{
-#'   \item Step 1：ALASSO via LARS，得到一条自适应 LASSO 解路径；
-#'   \item Step 2：基于 mBIC 从路径中选出候选变量集合 \eqn{H}；
-#'   \item Step 3–4：构造候选模型集合并对每个模型做 OLS 估计；
-#'   \item Step 5–6：在 \eqn{\phi_n} 网格上用 Cp-type 准则选取
-#'         \eqn{\hat\phi_n}，得到最终 AMA 模型平均估计。
-#' }
-#' 函数返回最终 AMA 估计以及各步的中间结果，便于进一步分析和作图。
+#' Fits Adaptive Model Averaging (AMA) under the Numerical Example 1 setup in the
+#' AMA paper. The routine follows the paper's Step 1--6 pipeline: ALASSO via LARS,
+#' mBIC screening to obtain H, construction of candidate models around H, and
+#' selection of phi_n by a Cp-type criterion to produce the final model-averaged
+#' estimator.
 #'
-#' @references
-#' Zhang, X. (2022).
-#' \emph{Adaptive Model Averaging Estimation With A Diverging Number of Parameters}.
+#' @param X Numeric matrix of dimension n x p (design matrix).
+#' @param y Numeric vector of length n (response).
+#' @param n_phi_grid Integer; number of grid points for phi_n (default 20).
+#' @param B_mc Integer; Monte Carlo repetitions used to estimate g0(phi_n) (default 50).
+#' @param seed Integer or NULL; random seed for reproducibility (default 2025).
 #'
-#' @param X 数值矩阵，维度 \eqn{n \times p}，每列对应一个协变量。
-#' @param y 数值向量，长度 \eqn{n}，响应变量。
-#' @param n_phi_grid 搜索 \eqn{\phi_n} 时网格上的点数，默认 20。
-#' @param B_mc Monte Carlo 重复次数，用于估计 \eqn{g_0(\phi_n)}，默认 50。
-#' @param seed 随机种子，方便重复结果。若为 \code{NULL} 则不设定。
-#'
-#' @return 一个列表，包含：
+#' @return A list containing (at least):
 #' \itemize{
-#'   \item \code{beta_ma} 最终 AMA 模型平均估计 \eqn{\hat\beta(\hat\phi_n)}。
-#'   \item \code{phi_hat} 选出的 \eqn{\hat\phi_n}。
-#'   \item \code{w_hat} 最终的模型平均权重向量。
-#'   \item \code{sigma2_hat} 使用集合 \eqn{H} 拟合得到的 \eqn{\hat\sigma^2}。
-#'   \item \code{H} mBIC 选出的候选变量集合 \eqn{H}。
-#'   \item \code{candidate_sets} Step 2+3 构造出的所有候选模型集合。
-#'   \item \code{step1, step2, step34, step56} 四个中间步骤的完整输出。
+#'   \item \code{beta_ma}: final AMA model-averaged estimate.
+#'   \item \code{phi_hat}: selected \eqn{\hat\phi_n}.
+#'   \item \code{w_hat}: model-averaging weights.
+#'   \item \code{sigma2_hat}: estimated noise variance based on H.
+#'   \item \code{H}: the screened set selected by mBIC.
+#'   \item \code{candidate_sets}: all candidate model index sets.
+#'   \item \code{step1, step2, step34, step56}: intermediate outputs for each step.
 #' }
 #'
-#' @examples
-#' \dontrun{
-#'   set.seed(1)
-#'   dat <- gen_example1_data(n = 100, rho = 0.5, R2 = 0.4)
-#'   fit <- ama_fit_example1(dat$X, dat$y,
-#'                           n_phi_grid = 10, B_mc = 20)
-#'   str(fit$beta_ma)
-#' }
-#'
+#' @seealso \code{\link{sim_example1_grid}}
 #' @export
 ama_fit_example1 <- function(X, y,
                              n_phi_grid = 20,
@@ -674,52 +657,24 @@ ama_fit_example1 <- function(X, y,
   )
 }
 
-#' @title AMA Numerical Example 1 模拟研究
+#' @title AMA Numerical Example 1 simulation study
 #'
 #' @description
-#' 在 AMA 文献 Numerical Example 1 的设计下，对一系列
-#' \code{(n, rho, R2)} 组合重复模拟 \code{B_rep} 次，
-#' 比较三种方法的性能：
-#' \itemize{
-#'   \item AMA（自适应模型平均）；
-#'   \item 基于 ALASSO 的单模型选择 + mBIC；
-#'   \item 基于 ALASSO 的单模型选择 + eBIC。
-#' }
-#' 输出各组合下模型误差相对 LS 的中位数（MRME），以及
-#' 稀疏性指标 \code{C} / \code{IC} 的平均值。
+#' Repeats the Numerical Example 1 simulation over a grid of (n, rho, R2) settings.
+#' For each setting, it compares three procedures: AMA, ALASSO + mBIC, and ALASSO + eBIC.
+#' The returned summary includes MRME (median relative model error to LS) and sparsity
+#' diagnostics C / IC.
 #'
-#' @references
-#' Zhang, X. (2022).
-#' \emph{Adaptive Model Averaging Estimation With A Diverging Number of Parameters}.
+#' @param n_vec Numeric vector of candidate sample sizes (e.g., 200 or c(200, 400)).
+#' @param rho_vec Numeric vector of AR(1) correlation parameters rho.
+#' @param R2_vec Numeric vector of signal strength values R^2.
+#' @param B_rep Integer; number of Monte Carlo replications per setting (default 100).
+#' @param n_phi_grid Integer; number of grid points for phi_n (default 20).
+#' @param B_mc Integer; Monte Carlo repetitions for estimating g0(phi_n) (default 50).
+#' @param seed Integer; random seed (default 2025).
 #'
-#' @param n_vec 数值向量，备选样本量，例如 \code{200} 或 \code{c(200, 400)}。
-#' @param rho_vec 数值向量，相关系数 \eqn{\rho} 的备选值。
-#' @param R2_vec 数值向量，信号强度 \eqn{R^2} 的备选值。
-#' @param B_rep 每个设定下的重复次数，默认 100。
-#' @param n_phi_grid \eqn{\phi_n} 网格点个数，默认 20。
-#' @param B_mc 估计 \eqn{g_0(\phi_n)} 的 Monte Carlo 次数，默认 50。
-#' @param seed 随机种子，默认 2025。
-#'
-#' @return 一个 \code{data.frame}，每一行对应一个
-#' \code{(n, rho, R2, method)} 组合，包含列：
-#' \itemize{
-#'   \item \code{MRME}：模型误差相对 LS 的中位数；
-#'   \item \code{C}：真正为零且被正确估计为零的系数个数；
-#'   \item \code{IC}：真正非零却被估计为零的系数个数。
-#' }
-#'
-#' @examples
-#' \dontrun{
-#'   res <- sim_example1_grid(
-#'     n_vec   = 200,
-#'     rho_vec = c(0.5, 0.75),
-#'     R2_vec  = c(0.2, 0.4),
-#'     B_rep   = 10,
-#'     n_phi_grid = 10,
-#'     B_mc    = 20
-#'   )
-#'   head(res)
-#' }
+#' @return A data.frame with columns
+#' \code{n}, \code{rho}, \code{R2}, \code{method}, \code{MRME}, \code{C}, \code{IC}.
 #'
 #' @export
 sim_example1_grid <- function(

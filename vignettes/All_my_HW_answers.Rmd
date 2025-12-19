@@ -1,17 +1,20 @@
-﻿---
-title: "All My HWs"
-author: "SA25204153"
-date: "2025-12-18"
-output:
-  html_document:
-    toc: true
-    toc_depth: 4
-    number_sections: true
-    df_print: paged
+---
+title: "All my HW answers"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{All my HW answers}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center", cache = FALSE)
+is_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_"))  # R CMD check 时为 TRUE
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE,
+  eval = !is_check
+)
+
 ```
 
 

@@ -2,9 +2,10 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 compute_ME_cpp <- function(beta_hat, beta0, Sigma) {
-  .Call(`_SA25204153_compute_ME_cpp`, beta_hat, beta0, Sigma)
+    .Call(`_SA25204153_compute_ME_cpp`, beta_hat, beta0, Sigma)
 }
 
 compute_C_IC_cpp <- function(beta_hat, beta0, tol = 1e-6) {
-  .Call(`_SA25204153_compute_C_IC_cpp`, beta_hat, beta0, tol)
+    .Call(`_SA25204153_compute_C_IC_cpp`, beta_hat, beta0, tol)
 }
+

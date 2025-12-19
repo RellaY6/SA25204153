@@ -2,7 +2,7 @@
 % Please edit documentation in R/ama_example1.R
 \name{sim_example1_grid}
 \alias{sim_example1_grid}
-\title{AMA Numerical Example 1 模拟研究}
+\title{AMA Numerical Example 1 simulation study}
 \usage{
 sim_example1_grid(
   n_vec = 200,
@@ -15,56 +15,27 @@ sim_example1_grid(
 )
 }
 \arguments{
-\item{n_vec}{数值向量，备选样本量，例如 \code{200} 或 \code{c(200, 400)}。}
+\item{n_vec}{Numeric vector of candidate sample sizes (e.g., 200 or c(200, 400)).}
 
-\item{rho_vec}{数值向量，相关系数 \eqn{\rho} 的备选值。}
+\item{rho_vec}{Numeric vector of AR(1) correlation parameters rho.}
 
-\item{R2_vec}{数值向量，信号强度 \eqn{R^2} 的备选值。}
+\item{R2_vec}{Numeric vector of signal strength values R^2.}
 
-\item{B_rep}{每个设定下的重复次数，默认 100。}
+\item{B_rep}{Integer; number of Monte Carlo replications per setting (default 100).}
 
-\item{n_phi_grid}{\eqn{\phi_n} 网格点个数，默认 20。}
+\item{n_phi_grid}{Integer; number of grid points for phi_n (default 20).}
 
-\item{B_mc}{估计 \eqn{g_0(\phi_n)} 的 Monte Carlo 次数，默认 50。}
+\item{B_mc}{Integer; Monte Carlo repetitions for estimating g0(phi_n) (default 50).}
 
-\item{seed}{随机种子，默认 2025。}
+\item{seed}{Integer; random seed (default 2025).}
 }
 \value{
-一个 \code{data.frame}，每一行对应一个
-\code{(n, rho, R2, method)} 组合，包含列：
-\itemize{
-  \item \code{MRME}：模型误差相对 LS 的中位数；
-  \item \code{C}：真正为零且被正确估计为零的系数个数；
-  \item \code{IC}：真正非零却被估计为零的系数个数。
-}
+A data.frame with columns
+\code{n}, \code{rho}, \code{R2}, \code{method}, \code{MRME}, \code{C}, \code{IC}.
 }
 \description{
-在 AMA 文献 Numerical Example 1 的设计下，对一系列
-\code{(n, rho, R2)} 组合重复模拟 \code{B_rep} 次，
-比较三种方法的性能：
-\itemize{
-  \item AMA（自适应模型平均）；
-  \item 基于 ALASSO 的单模型选择 + mBIC；
-  \item 基于 ALASSO 的单模型选择 + eBIC。
-}
-输出各组合下模型误差相对 LS 的中位数（MRME），以及
-稀疏性指标 \code{C} / \code{IC} 的平均值。
-}
-\examples{
-\dontrun{
-  res <- sim_example1_grid(
-    n_vec   = 200,
-    rho_vec = c(0.5, 0.75),
-    R2_vec  = c(0.2, 0.4),
-    B_rep   = 10,
-    n_phi_grid = 10,
-    B_mc    = 20
-  )
-  head(res)
-}
-
-}
-\references{
-Zhang, X. (2022).
-\emph{Adaptive Model Averaging Estimation With A Diverging Number of Parameters}.
+Repeats the Numerical Example 1 simulation over a grid of (n, rho, R2) settings.
+For each setting, it compares three procedures: AMA, ALASSO + mBIC, and ALASSO + eBIC.
+The returned summary includes MRME (median relative model error to LS) and sparsity
+diagnostics C / IC.
 }

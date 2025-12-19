@@ -10,15 +10,35 @@ Authors@R:
            role = c("aut", "cre"))
 Maintainer: Yujia Yang <yj.yang@mail.ustc.edu.cn>
 Description: Collection of example R and Rcpp functions used in the
-    'Statistical Computing' course. It implements
-    adaptive model averaging (AMA) from Zhang (2022) for a high-dimensional
-    linear model simulation study, and includes a Gibbs sampler implemented in Rcpp.
+    'Statistical Computing' course. It implements adaptive model averaging (AMA)
+    from Zhang (2022) for a high-dimensional linear model simulation study, and
+    includes a Gibbs sampler implemented in Rcpp.
 License: GPL (>= 2)
 Encoding: UTF-8
-Imports: Rcpp (>= 1.1.0), MASS, lars, quadprog
+Imports:
+    Rcpp (>= 1.1.0),
+    MASS,
+    lars,
+    quadprog
 Suggests:
     knitr,
-    rmarkdown
+    rmarkdown,
+    microbenchmark,
+    rbenchmark,
+    ggplot2,
+    dplyr,
+    tidyr,
+    tibble,
+    gridExtra,
+    lpSolve,
+    quantreg,
+    glmnet,
+    boot,
+    coda,
+    DAAG,
+    bootstrap,
+    purrr,
+    devtools
 VignetteBuilder: knitr
 LinkingTo: Rcpp
 RoxygenNote: 7.3.3

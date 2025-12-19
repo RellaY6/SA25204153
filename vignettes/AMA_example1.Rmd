@@ -1,16 +1,25 @@
----
+﻿---
 title: "Adaptive Model Averaging (AMA) Example 1 数值实验说明"
 author: "SA25204153 杨羽佳"
 date: "`r format(Sys.Date(), '%Y-%m-%d')`"
-output: rmarkdown::html_vignette
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 4
+    number_sections: true
 vignette: >
-  %\VignetteIndexEntry{AMA Example 1 数值实验说明}
+  %\VignetteIndexEntry{Adaptive Model Averaging (AMA) Example 1 数值实验说明}
   %\VignetteEngine{knitr::rmarkdown}
-  \usepackage[utf8]{inputenc}
+  %\VignetteEncoding{UTF-8}
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+# NOTE:
+# - Do NOT install.packages() inside vignettes.
+# - devtools::check() rebuilds vignettes in a clean session/library, so all needed
+#   packages should be declared in DESCRIPTION (Imports/Suggests) and installed beforehand.
 
 # ---- Robust package loading for knitting ----
 # This Rmd can be knitted in two ways:
@@ -38,22 +47,30 @@ if (requireNamespace(pkg, quietly = TRUE)) {
   # Not installed -> try load_all() from package source
   root <- .pkg_root()
   if (is.na(root)) {
-    stop("Package 'SA25204153' is not installed, and I cannot find a package root (DESCRIPTION). ",
-         "Fix: (1) open the SA25204153 R project, setwd() to the package root, then Knit; ",
-         "or (2) install the package with devtools::install() and knit again.")
+    stop(
+      "Package 'SA25204153' is not installed, and I cannot find a package root (DESCRIPTION).\n",
+      "Fix: (1) open the SA25204153 R project, setwd() to the package root, then Knit; \n",
+      "or (2) install the package with devtools::install() and knit again."
+    )
   }
   if (!requireNamespace("devtools", quietly = TRUE)) {
-    install.packages("devtools", quiet = TRUE)
+    stop("Package 'devtools' is required to knit from source (load_all). Please install it first.")
   }
   suppressPackageStartupMessages(devtools::load_all(root))
 }
 
-# Ensure suggested packages for this vignette
+# Ensure suggested packages for this vignette (should be in DESCRIPTION Suggests/Imports)
 need <- c("MASS","lars","quadprog","ggplot2","microbenchmark","knitr")
-for (p in need) if (!requireNamespace(p, quietly = TRUE)) install.packages(p, quiet = TRUE)
+
+missing <- need[!vapply(need, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing) > 0) {
+  stop("Missing packages needed for this vignette: ", paste(missing, collapse = ", "),
+       ". Please install them and re-knit.")
+}
 
 suppressPackageStartupMessages({
-  library(MASS); library(lars); library(quadprog); library(ggplot2); library(microbenchmark); library(knitr)
+  library(MASS); library(lars); library(quadprog)
+  library(ggplot2); library(microbenchmark); library(knitr)
 })
 ```
 
@@ -88,7 +105,7 @@ suppressPackageStartupMessages({
 该函数是内部辅助函数。它根据给定的 \((n, \rho, R^2)\) 生成一组模拟数据。
 
 ```{r example-gen, echo=TRUE}
-dat <- gen_example1_data(n = 200, rho = 0.5, R2 = 0.4)
+dat <- SA25204153:::gen_example1_data(n = 200, rho = 0.5, R2 = 0.4)
 str(dat, max.level = 1)
 ```
 
@@ -115,7 +132,7 @@ str(dat, max.level = 1)
 
 ```{r example-ama-fit, echo=TRUE}
 # 生成一组 Example 1 数据
-dat <- gen_example1_data(n = 200, rho = 0.5, R2 = 0.4)
+dat <- SA25204153:::gen_example1_data(n = 200, rho = 0.5, R2 = 0.4)
 
 # 跑一次 AMA 拟合（为了 vignette 速度，这里减小 MC 次数）
 fit_ama <- ama_fit_example1(
@@ -173,7 +190,6 @@ res_demo <- sim_example1_grid(
 
 res_demo
 ```
-
 
 ### 结果可视化（MRME）
 
@@ -260,9 +276,9 @@ mb
 
 ```{r rcpp-speed-summary, echo=FALSE}
 mb_sum <- summary(mb)[, c("expr", "median", "mean", "min", "max")]
-knitr::kable(mb_sum, digits = 0, caption = "R vs Rcpp：microbenchmark 结果摘要（单位：microseconds）")
+knitr::kable(mb_sum, digits = 0,
+             caption = "R vs Rcpp：microbenchmark 结果摘要（单位：microseconds）")
 ```
-
 
 # 6. 小结
 
