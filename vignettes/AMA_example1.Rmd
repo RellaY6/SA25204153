@@ -101,13 +101,53 @@ suppressPackageStartupMessages({
 
 # 2. 数据生成函数 `gen_example1_data()`
 
-该函数是内部辅助函数。它根据给定的 \((n, \rho, R^2)\) 生成一组模拟数据。
+它根据给定的 \((n, \rho, R^2)\) 生成一组模拟数据。
 
 ```{r example-gen, echo=TRUE}
 dat <- SA25204153:::gen_example1_data(n = 200, rho = 0.5, R2 = 0.4)
 str(dat, max.level = 1)
 ```
+```r
 
+gen_example1_data <- function(n, rho = 0.5, R2 = 0.4) {
+  ## 1. 维度：p_n = [4 n^{1/2}] - 5
+  p <- 4 * floor(sqrt(n)) - 5
+  
+  ## 2. q = [p_n / 9], 非零个数 |A| = 3q
+  q  <- floor(p / 9)
+  nonzero <- 3 * q
+  stopifnot(nonzero <= p)
+  
+  ## 3. 协方差矩阵
+  idx   <- 1:p
+  Sigma <- rho^abs(outer(idx, idx, "-"))
+  
+  ## 4. 真系数
+  beta0 <- c(rep(3, nonzero), rep(0, p - nonzero))
+  
+  ## 5. 生成 X ~ N(0, Sigma)
+  X <- MASS::mvrnorm(n = n, mu = rep(0, p), Sigma = Sigma)
+  
+  ## 6. 根据 R2 决定噪声方差
+  var_signal <- as.numeric(t(beta0) %*% Sigma %*% beta0)
+  sigma2     <- var_signal * (1 - R2) / R2
+  eps        <- rnorm(n, mean = 0, sd = sqrt(sigma2))
+  
+  ## 7. 生成 y
+  y <- as.numeric(X %*% beta0 + eps)
+  
+  list(
+    X       = X,
+    y       = y,
+    beta0   = beta0,
+    Sigma   = Sigma,
+    sigma2  = sigma2,
+    p       = p,
+    q       = q,
+    nonzero = nonzero
+  )
+}
+```
 输出列表中包含：
 
 - `X`：\(n \times p\) 设计矩阵；
@@ -160,6 +200,70 @@ ama_fit_example1 <- function(X, y,
     step2          = step2,
     step34         = step34,
     step56         = step56
+  )
+}
+
+
+ama_step1_alasso_lars <- function(X, y, gamma_alasso = 1, tol_active = 1e-8) {
+  # X: n x p design matrix
+  # y: length-n response vector
+  # gamma_alasso: exponent in ALASSO weights (default gamma_alasso = 1)
+  # tol_active: threshold to decide 'nonzero' coefficients
+  
+  stopifnot(is.matrix(X), length(y) == nrow(X))
+  n <- nrow(X); p <- ncol(X)
+  
+  if (p >= n) {
+    warning("Current p >= n. This violates the Example 1 setting (p < n). OLS init may be unstable.")
+  }
+  
+  ## 0. Preprocessing: scale X and center y
+  X_scaled   <- scale(X)
+  y_centered <- as.numeric(scale(y, center = TRUE, scale = FALSE))
+  
+  ## 1. Initial estimator beta^(init): OLS
+  lm_init   <- lm(y_centered ~ X_scaled)
+  beta_init <- coef(lm_init)[-1]  # drop intercept
+  
+  ## 2. Build ALASSO weights
+  eps     <- 1e-6
+  weights <- 1 / (abs(beta_init) + eps)^gamma_alasso
+  
+  ## 3. Rescale design: X*_j = X_scaled_j / w_j
+  X_star <- sweep(X_scaled, 2, weights, FUN = "/")
+  
+  ## 4. Run LARS-LASSO path on (X*, y_centered)
+  if (!requireNamespace("lars", quietly = TRUE)) {
+    stop("Package 'lars' is required. Please install it first.")
+  }
+  
+  lars_fit <- lars::lars(
+    x          = X_star,
+    y          = y_centered,
+    type       = "lasso",
+    normalize  = FALSE,
+    intercept  = TRUE
+  )
+  
+  beta_lars_path   <- lars_fit$beta  # K x p
+  beta_alasso_path <- sweep(beta_lars_path, 2, weights, FUN = "/")
+  
+  ## 5. Extract the active set at each step
+  K <- nrow(beta_alasso_path)
+  active_sets <- vector("list", K)
+  for (k in seq_len(K)) {
+    bk <- beta_alasso_path[k, ]
+    active_sets[[k]] <- which(abs(bk) > tol_active)
+  }
+  
+  list(
+    X_scaled         = X_scaled,
+    y_centered       = y_centered,
+    beta_init        = beta_init,
+    weights          = weights,
+    lars_fit         = lars_fit,
+    beta_alasso_path = beta_alasso_path,
+    active_sets      = active_sets
   )
 }
 ```
