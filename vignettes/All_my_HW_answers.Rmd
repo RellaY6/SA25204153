@@ -8,7 +8,7 @@ output:
     toc_depth: 4
     number_sections: true
 vignette: >
-  %\VignetteIndexEntry{Adaptive Model Averaging (AMA) Example 1 数值实验说明}
+  %\VignetteIndexEntry{All my HWS answer}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---

@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Adaptive Model Averaging (AMA) Example 1 数值实验说明"
 author: "SA25204153 杨羽佳"
 date: "`r format(Sys.Date(), '%Y-%m-%d')`"
@@ -15,7 +15,6 @@ vignette: >
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
-
 # NOTE:
 # - Do NOT install.packages() inside vignettes.
 # - devtools::check() rebuilds vignettes in a clean session/library, so all needed
@@ -74,7 +73,7 @@ suppressPackageStartupMessages({
 })
 ```
 
-# 1. 背景：AMA Example 1 在做什么
+# 1. 背景：AMA Example 1 
 
 本小结基于 Zhang (2022) 提出的 **Adaptive Model Averaging (AMA)** 方法，复现文中的 Numerical Example 1。  
 
@@ -128,7 +127,44 @@ str(dat, max.level = 1)
 3. Step 3–4：围绕 \(H\) 构造一族候选模型，并对每个模型做 OLS 拟合；
 4. Step 5–6：在一组 \(\phi_n\) 网格上用 Cp-type 准则选择最优 \(\hat\phi_n\)，得到最终 AMA 模型平均估计 \(\hat\beta(\hat\phi_n)\)。
 
-## 3.2 基本调用示例
+
+## 3.2 关键实现源码节选
+
+下面代码块为包内 `R/ama_example1.R` 中 `ama_fit_example1()` 的节选：
+
+```r
+ama_fit_example1 <- function(X, y,
+                             n_phi_grid = 20,
+                             B_mc       = 50,
+                             seed       = 2025) {
+  step1 <- ama_step1_alasso_lars(X, y, gamma_alasso = 1)
+  step2 <- ama_step2_select_H_mBIC(X, y, step1)
+  step34 <- ama_step34_build_candidates(X, y, step1, step2)
+  step56 <- ama_step5_6_section3(
+    X, y,
+    step2_res  = step2,
+    step34_res = step34,
+    n_phi_grid = n_phi_grid,
+    B_mc       = B_mc,
+    seed       = seed
+  )
+  
+  list(
+    beta_ma        = step56$beta_ma,
+    phi_hat        = step56$phi_hat,
+    w_hat          = step56$w_hat,
+    sigma2_hat     = step56$sigma2_hat,
+    H              = step2$H,
+    candidate_sets = step34$candidate_sets,
+    step1          = step1,
+    step2          = step2,
+    step34         = step34,
+    step56         = step56
+  )
+}
+```
+
+## 3.3 基本调用示例
 
 ```{r example-ama-fit, echo=TRUE}
 # 生成一组 Example 1 数据
@@ -156,7 +192,7 @@ names(fit_ama)
 - `candidate_sets`：Step 2+3 构造的所有候选模型；
 - `step1`, `step2`, `step34`, `step56`：对应各步骤的完整中间结果。
 
-我们可以简单查看非零系数个数：
+查看非零系数个数：
 
 ```{r example-ama-nonzero, echo=TRUE}
 sum(abs(fit_ama$beta_ma) > 1e-6)
@@ -173,7 +209,70 @@ sum(abs(fit_ama$beta_ma) > 1e-6)
   - C：真正为零且估计为 0 的系数个数（越大越好）；
   - IC：真正非零却估计为 0 的系数个数（越小越好）。
 
-## 4.2 精简版示例（vignette 中用较小规模）
+
+## 4.2 关键实现源码节选
+
+下面代码块为包内 `R/ama_example1.R` 中 `sim_example1_grid()` 的原样节选：
+
+```r
+sim_example1_grid <- function(
+    n_vec      = 200,
+    rho_vec    = c(0.5, 0.75),
+    R2_vec     = c(0.2, 0.4, 0.6, 0.8),
+    B_rep      = 100,
+    n_phi_grid = 20,
+    B_mc       = 50,
+    seed       = 2025
+) {
+  res_all <- data.frame(
+    n      = integer(0),
+    rho    = numeric(0),
+    R2     = numeric(0),
+    method = character(0),
+    MRME   = numeric(0),
+    C      = numeric(0),
+    IC     = numeric(0),
+    stringsAsFactors = FALSE
+  )
+  
+  for (n in n_vec) {
+    for (rho in rho_vec) {
+      for (R2 in R2_vec) {
+        cat("Running n =", n, ", rho =", rho, ", R2 =", R2, "...\n")
+        
+        res_one <- sim_example1_one_setting(
+          n          = n,
+          rho        = rho,
+          R2         = R2,
+          B_rep      = B_rep,
+          n_phi_grid = n_phi_grid,
+          B_mc       = B_mc,
+          seed       = seed
+        )
+        
+        methods <- names(res_one$MRME)
+        
+        df_tmp <- data.frame(
+          n      = rep(n,    length(methods)),
+          rho    = rep(rho,  length(methods)),
+          R2     = rep(R2,   length(methods)),
+          method = methods,
+          MRME   = as.numeric(res_one$MRME),
+          C      = as.numeric(res_one$C),
+          IC     = as.numeric(res_one$IC),
+          stringsAsFactors = FALSE
+        )
+        
+        res_all <- rbind(res_all, df_tmp)
+      }
+    }
+  }
+  
+  res_all
+}
+```
+
+## 4.3 精简版示例（vignette 中用较小规模）
 
 为了控制 knit 时间，这里用一个非常小的设定作为演示：
 
@@ -223,9 +322,58 @@ ggplot(res_demo, aes(x = factor(R2), y = MRME, fill = method)) +
 - `compute_ME_cpp(beta_hat, beta0, Sigma)`
 - `compute_C_IC_cpp(beta_hat, beta0, tol = 1e-6)`
 
-下面给出可直接复现的最小示例，并在 vignette 内部提供一个“纯 R”版本用于速度对比（该 R 版本仅用于对照，不导出、不作为包函数）。
+下面给出可直接复现的最小示例，并在 vignette 内部提供一个“纯 R”版本用于速度对比。
 
-## 5.1 `compute_ME_cpp()` 示例
+
+## 5.1 C++ 源码
+
+下面代码块为包内 `src/ama_utils.cpp` 的原样节选，其中包含 `compute_ME_cpp()` 与 `compute_C_IC_cpp()` 的 C++/Rcpp 实现
+
+```cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+double compute_ME_cpp(const NumericVector& beta_hat,
+                      const NumericVector& beta0,
+                      const NumericMatrix& Sigma) {
+  int p = beta_hat.size();
+  if (beta0.size() != p) stop("beta_hat and beta0 must have the same length.");
+  if (Sigma.nrow() != p || Sigma.ncol() != p) stop("Sigma must be a p x p matrix.");
+  
+  double me = 0.0;
+  for (int i = 0; i < p; ++i) {
+    double di = beta_hat[i] - beta0[i];
+    double s  = 0.0;
+    for (int j = 0; j < p; ++j) {
+      s += Sigma(i, j) * (beta_hat[j] - beta0[j]);
+    }
+    me += di * s;
+  }
+  return me;
+}
+
+// [[Rcpp::export]]
+NumericVector compute_C_IC_cpp(const NumericVector& beta_hat,
+                               const NumericVector& beta0,
+                               double tol = 1e-6) {
+  int p = beta_hat.size();
+  if (beta0.size() != p) stop("beta_hat and beta0 must have the same length.");
+  
+  int C = 0, IC = 0;
+  for (int j = 0; j < p; ++j) {
+    bool true_zero = std::fabs(beta0[j]) < tol;
+    bool est_zero  = std::fabs(beta_hat[j]) < tol;
+    if (true_zero && est_zero)  ++C;
+    if (!true_zero && est_zero) ++IC;
+  }
+  
+  NumericVector out = NumericVector::create(_["C"] = C, _["IC"] = IC);
+  return out;
+}
+```
+
+## 5.2 `compute_ME_cpp()` 示例
 
 ```{r rcpp-me-example, echo=TRUE}
 beta0 <- dat$beta0
@@ -235,14 +383,14 @@ ME_ama <- compute_ME_cpp(fit_ama$beta_ma, beta0, Sigma)
 ME_ama
 ```
 
-## 5.2 `compute_C_IC_cpp()` 示例
+## 5.3 `compute_C_IC_cpp()` 示例
 
 ```{r rcpp-cic-example, echo=TRUE}
 CIC_ama <- compute_C_IC_cpp(fit_ama$beta_ma, beta0)
 CIC_ama
 ```
 
-## 5.3 速度对比：R vs Rcpp（microbenchmark）
+## 5.4 速度对比：R vs Rcpp（microbenchmark）
 
 为了做速度对比，这里在 vignette 内写一个“纯 R”的对照版本。
 
