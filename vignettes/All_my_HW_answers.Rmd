@@ -1,20 +1,35 @@
 ---
-title: "All my HW answers"
-output: rmarkdown::html_vignette
+title: "All My HWs"
+author: "SA25204153"
+date: "2025-12-18"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 4
+    number_sections: true
 vignette: >
-  %\VignetteIndexEntry{All my HW answers}
+  %\VignetteIndexEntry{Adaptive Model Averaging (AMA) Example 1 数值实验说明}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
-
 ```{r setup, include=FALSE}
-is_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_"))  # R CMD check 时为 TRUE
-knitr::opts_chunk$set(
-  echo = TRUE, message = FALSE, warning = FALSE,
-  eval = !is_check
-)
+# 在 R CMD check / devtools::check() 以及非交互式构建（例如 TA 用 devtools::install_github 安装时）
+# 默认不运行耗时计算；在 RStudio 交互式 Knit 时仍可正常运行。
+is_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_"))
 
+# 如需强制运行所有代码（包括耗时部分），请在渲染前设置：
+# Sys.setenv(RUN_ALL_MY_HW = "true")
+run_all  <- identical(Sys.getenv("RUN_ALL_MY_HW"), "true")
+
+run_code <- run_all || (interactive() && !is_check)
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  eval = run_code
+)
 ```
 
 
@@ -26,7 +41,8 @@ knitr::opts_chunk$set(
 ```{r HW2025_09_15_setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE, message = FALSE, warning = FALSE,
-  fig.align = "center", fig.width = 7, fig.height = 4
+  fig.align = "center", fig.width = 7, fig.height = 4,
+  eval = run_code
 )
 set.seed(2025)
 ```
@@ -238,7 +254,9 @@ knitr::kable(res_tbl, digits = 4, caption = "Hold-out performance and sparsity")
 \newpage
 
 ```{r HW2025_09_22_setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,
+  eval = run_code
+)
 ```
 ### **Question1**
 3.4:The Rayleigh density is $$f(x)=\frac{x}{\sigma ^2}e^{-x^2/\left( 2\sigma ^2 \right)},x\geqslant 0, \sigma>0.$$ Develop an alogrithm to generate random samples for samples from a Rayleigh($\sigma$) distribution. Generate Rayleigh($\sigma$) samples for several choices of $\sigma$>0 and check that the mode of the generated samples is close to the theoretical mode $\sigma$(check the histogram).
@@ -267,7 +285,9 @@ x^\star=\sigma .
 ##### 1.2 Details
 ```{r}
 set.seed(2025)
-knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.align="center", fig.width=7, fig.height=4)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.align="center", fig.width=7, fig.height=4,
+  eval = run_code
+)
 # Rayleigh(σ) 生成器（逆变换）
 rrayleigh <- function(n, sigma){
   if (any(sigma <= 0)) stop("sigma must be positive.")
@@ -665,7 +685,9 @@ sessionInfo()
 \newpage
 
 ```{r HW2025_09_29_setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,
+  eval = run_code
+)
 ```
 ### **Question 1**
 6.4: Write a function  to compute a Monte Carlo estimate of the Beta(3,3)cdf, and use the function to estimate F(x) for x=0.1,0.2,...,0.9. Compare the estimates with the values returned by the pbeta function in R.
@@ -969,7 +991,9 @@ sessionInfo()
 
 ```{r HW2025_10_13_setup, include=FALSE}
 set.seed(2025)
-knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.align="center", fig.width=7, fig.height=4)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.align="center", fig.width=7, fig.height=4,
+  eval = run_code
+)
 ```
 
 ### **Question 1**
@@ -1114,7 +1138,9 @@ t_{\text{crit}}=t_{1-\alpha/2,\ n-1},
 
 ```{r HW2025_10_13_opts_power, include=FALSE}
 set.seed(2025)
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+  eval = run_code
+)
 ```
 
 ```{r HW2025_10_13_power_functions}
@@ -1210,7 +1236,9 @@ We take the true mean of \\(\\chi^2(2)\\) to be \\(\\mu=2\\).
 
 ```{r HW2025_10_13_opts_q3, include=FALSE}
 set.seed(2025)
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+  eval = run_code
+)
 ```
 
 ```{r HW2025_10_13_functions_q3}
@@ -1391,7 +1419,9 @@ ggplot(res05, aes(x = factor(n), y = type1, group = pop, color = pop)) +
 \newpage
 
 ```{r HW2025_10_20_setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 7, fig.height = 4.8)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 7, fig.height = 4.8,
+  eval = run_code
+)
 set.seed(2025)
 # 优先尝试加载 ggplot2；若不可用，将在绘图处自动退回 base R
 has_gg <- requireNamespace("ggplot2", quietly = TRUE)
@@ -1668,7 +1698,9 @@ if (isTRUE(has_gg)) {
 \newpage
 
 ```{r HW2025_10_27_setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center",
+  eval = run_code
+)
 set.seed(20251029)
 
 # --- Packages ---
@@ -1995,7 +2027,9 @@ sessionInfo()
 \newpage
 
 ```{r HW2025_11_03_setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center",
+  eval = run_code
+)
 
 # 这几个包后面会用到：kable / tibble / bind_rows / ggplot
 pkgs <- c("knitr","dplyr","tibble","ggplot2")
@@ -2300,7 +2334,9 @@ alphahat_fixed  # ~0.106 as reported in the book
 用一维目标 \(\pi(x)=\mathcal N(0,1)\) 与对称随机游走建议 \(g(r\mid s)=\mathcal N(s,\sigma^2)\)。验证：抽样边际分布接近 \(\pi\)，且经验上满足细致平衡。
 
 ```{r HW2025_11_03_setup2, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center",
+  eval = run_code
+)
 suppressPackageStartupMessages({ library(ggplot2); library(dplyr); library(tibble); library(knitr) })
 set.seed(20251104)
 ```
@@ -2373,7 +2409,9 @@ sessionInfo()
 \newpage
 
 ```{r HW2025_11_10_setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center",
+  eval = run_code
+)
 pkgs <- c("knitr","coda","ggplot2","dplyr","tibble","tidyr","gridExtra")
 for(p in pkgs){
   if(!requireNamespace(p, quietly = TRUE)) install.packages(p, quiet = TRUE)
@@ -2626,7 +2664,9 @@ sessionInfo()
 \newpage
 
 ```{r HW2025_11_17_setup14, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center",
+  eval = run_code
+)
 # add dplyr (for mutate/transmute/bind_rows) and ggplot2 explicitly to pkgs
 pkgs <- c("knitr","lpSolve","ggplot2","dplyr","tibble")
 for(p in pkgs){
@@ -2956,7 +2996,8 @@ sessionInfo()
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
-  warning = FALSE
+  warning = FALSE,
+  eval = run_code
 )
 ```
 
@@ -3307,7 +3348,9 @@ all.equal(as.numeric(base_stat), fast_stat)
 # Homework-2025.12.01
 
 ```{r HW2025_12_01_setup11_8, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+  eval = run_code
+)
 pkgs <- c("Rcpp")
 for (p in pkgs) {
   if (!requireNamespace(p, quietly = TRUE)) {
@@ -3594,7 +3637,8 @@ Rcpp 版本的运行时间明显短于纯 R 版本，
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
-  warning = FALSE
+  warning = FALSE,
+  eval = run_code
 )
 ```
 

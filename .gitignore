@@ -10,3 +10,4 @@ src/*.dll
 .quarto
 /doc/
 /Meta/
+vignettes/All_my_HW_answers.html
