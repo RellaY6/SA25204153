@@ -600,7 +600,7 @@ sim_example1_one_setting <- function(
 ## ==========================================================
 
 #' @title Adaptive Model Averaging (AMA) fit function (Numerical Example 1)
-#'
+#' @name ama_fit_example1
 #' @description
 #' Fits Adaptive Model Averaging (AMA) under the Numerical Example 1 setup in the
 #' AMA paper. The routine follows the paper's Step 1--6 pipeline: ALASSO via LARS,
@@ -658,7 +658,7 @@ ama_fit_example1 <- function(X, y,
 }
 
 #' @title AMA Numerical Example 1 simulation study
-#'
+#'@name sim_example1_grid
 #' @description
 #' Repeats the Numerical Example 1 simulation over a grid of (n, rho, R2) settings.
 #' For each setting, it compares three procedures: AMA, ALASSO + mBIC, and ALASSO + eBIC.
